@@ -1,49 +1,854 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DexSeed</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0a0a0a;
-      color: #e5e5e5;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      text-align: center;
-    }
-    .container { padding: 2rem; }
-    h1 {
-      font-size: 4rem;
-      margin: 0 0 0.5rem;
-      letter-spacing: -0.02em;
-    }
-    p {
-      font-size: 1.2rem;
-      color: #888;
-      margin: 0;
-    }
-    .tbd {
-      margin-top: 2rem;
-      padding: 0.5rem 1rem;
-      border: 1px solid #333;
-      border-radius: 4px;
-      display: inline-block;
-      font-size: 0.9rem;
-      color: #666;
-      letter-spacing: 0.1em;
-    }
-  </style>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>DexSeed: Scalable Physics-Grounded Demonstration Generation for Sim-to-Real Dexterous Manipulation</title>
+    <meta name="description" content="DexSeed turns a few human RGB-D videos into large-scale, physics-plausible dexterous manipulation data, enabling zero-shot sim-to-real transfer.">
+
+    <!-- Open Graph / social preview (no author info) -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="DexSeed: Scalable Physics-Grounded Demonstration Generation for Sim-to-Real Dexterous Manipulation">
+    <meta property="og:description" content="Turn a few human RGB-D videos into large-scale, physics-plausible dexterous robot data — zero-shot sim-to-real with only 3 human videos per task.">
+    <meta property="og:image" content="assets/media/images/pull_figure.png">
+    <meta name="twitter:card" content="summary_large_image">
+
+    <link rel="icon" type="image/svg+xml" href="assets/media/images/dexseed_icon_embedded_transparent.svg">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,100&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style type="text/css">
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    /* Claude / Anthropic-style palette */
+    --primary: #c96442;         /* clay-interactive — terracotta */
+    --primary-dark: #b0522f;
+    --contrary: #788c5d;        /* olive — secondary accent */
+    --contrary-dark: #5f7048;
+    --text: #262624;            /* gray-800 */
+    --text-secondary: #5e5d59;  /* gray-600 */
+    --text-light: #87867f;      /* gray-500 */
+    --bg: #faf9f5;              /* gray-050 — warm cream */
+    --bg-alt: #f0eee6;          /* gray-150 */
+    --border: #e8e6dc;          /* gray-200 */
+    --border-light: #f0eee6;
+    --navbar-bg: rgba(250, 249, 245, 0.88);
+    --font-serif: 'Fraunces', 'Tiempos Text', 'Iowan Old Style', Georgia, serif;
+    --font-sans: 'Inter', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+}
+
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+
+body {
+    font-family: var(--font-serif);
+    font-optical-sizing: auto;
+    font-variation-settings: "SOFT" 50;
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--text);
+    background: var(--bg);
+    font-feature-settings: "kern", "liga";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: var(--primary); text-decoration: none; transition: color 0.2s; }
+a:hover { color: var(--primary-dark); }
+img { max-width: 100%; height: auto; display: block; }
+
+.container { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+.narrow { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+.section { padding: 72px 0; background: var(--bg); }
+.section-alt { background: var(--bg-alt); }
+
+.section-title {
+    font-family: var(--font-serif);
+    font-size: 2.2rem;
+    color: var(--text);
+    margin-bottom: 16px;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    text-align: center;
+    font-variation-settings: "SOFT" 80, "opsz" 72;
+}
+.section-title::first-letter { color: var(--primary); }
+.section-lead {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    color: var(--text-secondary);
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+}
+.section-lead strong { color: var(--primary); font-weight: 600; }
+
+/* ---------- Navigation ---------- */
+.navbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    background: var(--navbar-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-light);
+    height: 60px;
+    display: flex;
+    align-items: center;
+}
+.navbar .container { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.nav-brand {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.015em;
+}
+.nav-brand:hover { color: var(--primary); }
+.nav-links { display: flex; gap: 26px; }
+.nav-links a {
+    font-family: var(--font-sans);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    position: relative;
+}
+.nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: -4px; left: 0;
+    width: 0; height: 2px;
+    background: var(--primary);
+    transition: width 0.2s;
+}
+.nav-links a:hover { color: var(--primary); }
+.nav-links a:hover::after { width: 100%; }
+
+/* ---------- Hero ---------- */
+.hero { padding: 132px 0 40px; text-align: center; }
+.hero-title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.9rem, 4.2vw, 2.85rem);
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    max-width: 16em;
+    margin: 0 auto 18px;
+    font-variation-settings: "SOFT" 100, "opsz" 144;
+}
+.hero-title .brand-dex { color: var(--text); font-weight: 700; }
+.hero-title .brand-seed { color: #8E84A0; font-weight: 700; }
+.nav-icon { height: 42px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.hero-icon { height: 3.9rem; display: inline-block; vertical-align: middle; margin-right: 12px; margin-bottom: 6px; }
+.nav-brand .brand-dex { color: var(--text); font-weight: 700; }
+.nav-brand .brand-seed { color: #8E84A0; font-weight: 700; }
+.nav-brand:hover .brand-dex, .nav-brand:hover .brand-seed { color: var(--primary); }
+.hero-byline {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.hero-venue {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    color: var(--text-light);
+    margin-bottom: 26px;
+}
+.hero-tagline {
+    font-family: var(--font-sans);
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+    max-width: 640px;
+    margin: 0 auto 28px;
+    line-height: 1.6;
+}
+.btn-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg);
+    font-family: var(--font-sans);
+    font-size: 0.92rem;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn:hover { border-color: var(--primary); color: var(--bg); background: var(--primary); }
+.btn svg { width: 17px; height: 17px; }
+.btn.primary { border-color: var(--primary); color: var(--bg); background: var(--primary); }
+.btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+
+/* ---------- Figures ---------- */
+.figure { margin: 0 auto; text-align: center; }
+.figure img {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--border-light);
+    background: #fff;
+}
+.caption {
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 16px auto 0;
+    max-width: 860px;
+    text-align: left;
+}
+.caption b, .caption strong { color: var(--text-secondary); font-weight: 600; }
+.fig-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+
+/* ---------- Stats strip ---------- */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.stat { text-align: center; padding: 8px 6px; }
+.stat-num {
+    font-family: var(--font-serif);
+    font-size: 2.6rem;
+    font-weight: 400;
+    color: var(--primary);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-variation-settings: "opsz" 90;
+}
+.stat-label {
+    font-family: var(--font-sans);
+    font-size: 0.84rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    line-height: 1.45;
+}
+
+/* ---------- Abstract ---------- */
+.abstract-body { text-align: justify; color: var(--text); line-height: 1.75; font-size: 1.05rem; }
+.abstract-body strong { color: var(--primary); font-weight: 600; }
+
+/* ---------- Video stage (overview) ---------- */
+.video-frame {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 6px 30px rgba(0, 0, 0, 0.10);
+    background: #000;
+    aspect-ratio: 16 / 9;
+}
+.video-frame video { width: 100%; height: 100%; display: block; }
+
+/* ---------- Method pillars ---------- */
+.pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 40px; }
+.pillar {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 22px;
+}
+.section-alt .pillar { background: #fdfcf9; }
+.pillar-num {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--primary);
+    letter-spacing: 0.05em;
+}
+.pillar-title {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: var(--text);
+    margin: 8px 0 8px;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+}
+.pillar-desc { font-family: var(--font-sans); font-size: 0.92rem; color: var(--text-secondary); line-height: 1.6; }
+.pillar-desc em { color: var(--text); font-style: italic; }
+
+/* ---------- Video gallery (tabs + carousel) ---------- */
+.gallery { max-width: 960px; margin: 0 auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 18px; }
+.tab {
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 7px 18px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.section-alt .tab { background: #fdfcf9; }
+.tab:hover { border-color: var(--primary); color: var(--primary); }
+.tab.active { background: var(--primary); border-color: var(--primary); color: var(--bg); }
+.task-desc {
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: 18px;
+    min-height: 1.4em;
+}
+.stage {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 6px 30px rgba(0, 0, 0, 0.10);
+}
+.stage video { width: 100%; display: block; background: #000; }
+.nav-arrow {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    width: 42px; height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(38, 38, 36, 0.42);
+    color: #fff;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+    z-index: 2;
+}
+.nav-arrow:hover { background: var(--primary); }
+.nav-arrow.prev { left: 12px; }
+.nav-arrow.next { right: 12px; }
+.clip-label {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    color: var(--text-light);
+    text-align: center;
+    margin-top: 14px;
+}
+.clip-label .hl { color: var(--primary); font-weight: 600; }
+.dots { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--border);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s, transform 0.2s;
+}
+.dot:hover { background: var(--text-light); }
+.dot.active { background: var(--primary); transform: scale(1.15); }
+
+/* ---------- Human input row ---------- */
+.human-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.human-cell { text-align: center; }
+.human-cell video {
+    width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    background: #000;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+}
+.human-cell .name {
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-top: 10px;
+}
+
+/* ---------- Result callouts ---------- */
+.callout-row { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 28px; }
+.callout {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 22px;
+    text-align: center;
+    min-width: 150px;
+}
+.section-alt .callout { background: #fdfcf9; }
+.callout .big { font-family: var(--font-serif); font-size: 1.7rem; color: var(--primary); letter-spacing: -0.02em; line-height: 1; }
+.callout .lbl { font-family: var(--font-sans); font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.4; }
+
+/* ---------- BibTeX ---------- */
+.bibtex-wrap { position: relative; max-width: 860px; margin: 0 auto; }
+.bibtex {
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 24px;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 2;
+}
+.section .bibtex { background: var(--bg-alt); }
+.copy-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.copy-btn:hover { background: var(--primary); color: var(--bg); border-color: var(--primary); }
+
+/* ---------- Footer ---------- */
+.footer {
+    padding: 36px 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-light);
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    background: var(--bg);
+}
+.footer .sparkle { color: var(--primary); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 860px) {
+    .pillars { grid-template-columns: 1fr; }
+    .fig-pair { grid-template-columns: 1fr; gap: 32px; }
+}
+@media (max-width: 768px) {
+    .section { padding: 48px 0; }
+    .hero { padding: 104px 0 32px; }
+    .section-title { font-size: 1.55rem; }
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 28px 12px; }
+    .human-row { grid-template-columns: repeat(2, 1fr); }
+    .nav-links { gap: 14px; }
+    .nav-links a { font-size: 0.82rem; }
+    .stat-num { font-size: 2.1rem; }
+}
+@media (max-width: 480px) {
+    .container { padding: 0 16px; }
+    .nav-brand { font-size: 1rem; }
+    .nav-links { display: none; }
+    .nav-arrow { width: 34px; height: 34px; font-size: 1.1rem; }
+}
+    </style>
 </head>
+
 <body>
-  <div class="container">
-    <h1>DexSeed</h1>
-    <p>Project page coming soon</p>
-    <div class="tbd">TBD</div>
-  </div>
+
+<nav class="navbar">
+    <div class="container">
+        <a class="nav-brand" href="#top"><img src="assets/media/images/dexseed_icon_embedded_transparent.svg" alt="" class="nav-icon"><span class="brand-dex">Dex</span><span class="brand-seed">Seed</span></a>
+        <div class="nav-links">
+            <a href="#abstract">Abstract</a>
+            <a href="#method">Method</a>
+            <a href="#data">Data</a>
+            <a href="#real">Real World</a>
+            <a href="#bibtex">BibTeX</a>
+        </div>
+    </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header id="top" class="hero">
+    <div class="container">
+        <h1 class="hero-title"><img src="assets/media/images/dexseed_icon_embedded_transparent.svg" alt="" class="hero-icon"><span class="brand-dex">Dex</span><span class="brand-seed">Seed</span>: Scalable Physics-Grounded Demonstration Generation for Sim-to-Real Dexterous Manipulation</h1>
+        <p class="hero-byline">Anonymous Submission</p>
+        <p class="hero-tagline">Turn a handful of human RGB-D videos into large-scale, physics-plausible dexterous robot data — and transfer to the real world zero-shot.</p>
+        <div class="btn-row">
+            <a class="btn primary" href="#video">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Overview Video
+            </a>
+        </div>
+    </div>
+</header>
+
+<!-- ================= TEASER FIGURE ================= -->
+<section class="section" style="padding-top: 28px;">
+    <div class="container">
+        <figure class="figure">
+            <img src="assets/media/images/pull_figure.png" alt="DexSeed overview: from a few human videos to large-scale physics-plausible robot demos and zero-shot real-world transfer." loading="lazy">
+            <figcaption class="caption"><b>DexSeed</b> turns a few human RGB-D videos into large-scale, physics-plausible robot demonstrations across randomized domains and embodiments, enabling zero-shot sim-to-real transfer.</figcaption>
+        </figure>
+    </div>
+</section>
+
+<!-- ================= STATS STRIP ================= -->
+<section class="section section-alt" style="padding: 44px 0;">
+    <div class="container">
+        <div class="stats">
+            <div class="stat"><div class="stat-num">3</div><div class="stat-label">human videos per task</div></div>
+            <div class="stat"><div class="stat-num">+11.5</div><div class="stat-label">pts data-generation success over best baseline (D2)</div></div>
+            <div class="stat"><div class="stat-num">+33.2%</div><div class="stat-label">avg gain in downstream policy success</div></div>
+            <div class="stat"><div class="stat-num">45%</div><div class="stat-label">avg <strong>zero-shot</strong> real-world success</div></div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= ABSTRACT ================= -->
+<section id="abstract" class="section">
+    <div class="container">
+        <h2 class="section-title">Abstract</h2>
+        <div class="narrow">
+            <p class="abstract-body">
+                Learning visuomotor policies for contact-rich dexterous manipulation requires demonstrations that are diverse and physically valid, yet teleoperation is costly and embodiment-specific, while human videos are not directly executable by robot hands. We introduce <strong>DexSeed</strong>, a physics-grounded pipeline that converts a handful of human RGB-D videos into large-scale dexterous manipulation datasets under joint randomization of layout, geometry, visual appearance, and physics. Rather than treating a human demonstration as a trajectory to copy, DexSeed uses it as an object-centric, phase-aligned prior over task-relevant contact structure, combining temporal style augmentation, a task-conditioned objective, and sampling-based optimization through full physical rollouts. Across four contact-rich tasks, DexSeed achieves the highest data-generation success from both teleoperated demonstrations and human videos, improves simulated downstream policy success by <strong>33.2% on average</strong>, and achieves a <strong>45% zero-shot real-world success</strong> rate using only <strong>3 human videos</strong> per task.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ================= OVERVIEW VIDEO ================= -->
+<section id="video" class="section section-alt">
+    <div class="container">
+        <h2 class="section-title">Overview Video</h2>
+        <div class="gallery">
+            <div class="video-frame">
+                <video controls playsinline preload="metadata">
+                    <source src="assets/media/videos/DexSeed_main_video.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <p style="text-align:center;margin-top:12px;font-family:var(--font-sans);font-size:0.85rem;color:var(--text-light);">
+                🔊 This video contains audio.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ================= METHOD ================= -->
+<section id="method" class="section">
+    <div class="container">
+        <h2 class="section-title">How DexSeed Works</h2>
+        <p class="section-lead">From a few human videos, DexSeed builds an <strong>object-centric, phase-aligned</strong> manipulation prior and optimizes robot controls through <strong>task-conditioned physical rollouts</strong> — yielding diverse contact strategies and manipulation behaviors from a small seed set.</p>
+        <figure class="figure">
+            <img src="assets/media/images/pipeline.png" alt="The DexSeed pipeline from human video reconstruction to task-conditioned physics optimization." loading="lazy">
+            <figcaption class="caption"><b>The DexSeed pipeline.</b> Each human video is reconstructed into human &amp; object motion, retargeted to a kinematic robot prior, and turned into an object-centric, phase-aligned reference with a contact mask. A sampling-based optimizer then searches robot controls through full physical rollouts under layout, geometry, physics, and temporal randomization, and renders the accepted, task-successful rollouts with visual randomization for policy training.</figcaption>
+        </figure>
+        <div class="pillars">
+            <div class="pillar">
+                <div class="pillar-num">01</div>
+                <div class="pillar-title">Phase-aligned contact prior</div>
+                <div class="pillar-desc">From each video we build a layout-conditioned, phase-aligned reference and a contact mask that capture <em>where</em> and <em>when</em> contact is task-relevant — a prior, not a trajectory to track.</div>
+            </div>
+            <div class="pillar">
+                <div class="pillar-num">02</div>
+                <div class="pillar-title">Temporal style augmentation</div>
+                <div class="pillar-desc">Rollout horizon and phase timing become an explicit randomization axis, so generated behaviors adapt their timing instead of replaying the source schedule.</div>
+            </div>
+            <div class="pillar">
+                <div class="pillar-num">03</div>
+                <div class="pillar-title">Task-conditioned physics optimization</div>
+                <div class="pillar-desc">An MPPI-style sampler optimizes controls through full physical rollouts, accepting only task-successful, physically valid demonstrations.</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= HUMAN INPUTS ================= -->
+<section class="section section-alt">
+    <div class="container">
+        <h2 class="section-title">The Seed: A Few Human Videos</h2>
+        <p class="section-lead">DexSeed starts from only <strong>3 human RGB-D videos per task</strong> across four contact-rich tasks — spanning functional grasping, in-hand re-grasping, and fingertip pushing.</p>
+        <div class="human-row" id="human-row"></div>
+    </div>
+</section>
+
+<!-- ================= GENERATED DATA: DIVERSITY ================= -->
+<section id="data" class="section">
+    <div class="container">
+        <h2 class="section-title">Diverse, Physically-Valid Generated Data</h2>
+        <p class="section-lead">From three source demonstrations, DexSeed generates large, diverse datasets under joint <strong>layout, geometry, visual &amp; physics</strong> randomization. Below: generated rollouts in simulation (with visual randomization) for each task — use the tabs and arrows to browse seeds.</p>
+        <div class="gallery" id="sim-gallery"></div>
+
+        <div class="fig-pair" style="margin-top: 56px;">
+            <figure class="figure">
+                <img src="assets/media/images/heatmap.png" alt="Heatmap of data-generation success across randomization regimes and methods." loading="lazy">
+                <figcaption class="caption"><b>Coverage across regimes.</b> Average data-generation success across randomization regimes (D0/D1/D2) and source types (teleop, human video). DexSeed (right column) remains strong across all regimes.</figcaption>
+            </figure>
+            <figure class="figure">
+                <img src="assets/media/images/pca.png" alt="2D PCA of generated wrist poses and finger-joint actions." loading="lazy">
+                <figcaption class="caption"><b>Trajectory diversity.</b> 2D PCA of wrist poses and finger-joint actions on Place Hammer under D2 — DexSeed expands three source demos into a markedly wider region than baselines.</figcaption>
+            </figure>
+        </div>
+    </div>
+</section>
+
+<!-- ================= DATA-GEN RESULTS ================= -->
+<section class="section section-alt">
+    <div class="container">
+        <h2 class="section-title">Highest Data-Generation Success</h2>
+        <p class="section-lead">Under the hardest regime <strong>D2</strong> (joint layout, geometry &amp; physics), DexSeed attains the best data-generation success from both teleoperated and human-video sources — across all four tasks.</p>
+        <figure class="figure">
+            <img src="assets/media/images/data_generation_comparison.png" alt="Per-task data-generation success rate under D2 comparing DexSeed to baselines." loading="lazy">
+            <figcaption class="caption"><b>Per-task data-generation success (↑) under D2.</b> Each bar is computed over 1000 generation attempts per method, task, and source type. Baselines: DexMimicGen, SkillMimicGen, ManipTrans, and SPIDER.</figcaption>
+        </figure>
+        <div class="callout-row">
+            <div class="callout"><div class="big">65.5%</div><div class="lbl">from teleop sources<br>(+11.5 pts vs. best baseline)</div></div>
+            <div class="callout"><div class="big">50.0%</div><div class="lbl">from human videos<br>(+9.0 pts vs. best baseline)</div></div>
+            <div class="callout"><div class="big">up to 2×</div><div class="lbl">downstream policy success<br>vs. strongest baseline (sim)</div></div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= REAL-WORLD DEPLOYMENT ================= -->
+<section id="real" class="section">
+    <div class="container">
+        <h2 class="section-title">Zero-Shot Real-World Deployment</h2>
+        <p class="section-lead">Policies trained purely on DexSeed-generated data transfer <strong>zero-shot</strong> to a real LEAP Hand — reaching <strong>45% average success</strong> from just 3 human videos per task. Each task is evaluated over 20 real-world trials.</p>
+        <div class="gallery" id="real-gallery"></div>
+    </div>
+</section>
+
+<!-- ================= SCALING ================= -->
+<section class="section section-alt">
+    <div class="container">
+        <h2 class="section-title">Performance Scales with Generated Data</h2>
+        <p class="section-lead">Policy success improves consistently as the number of generated demonstrations grows (100 → 3000), in both sim-to-sim and sim-to-real evaluation.</p>
+        <div class="gallery" style="max-width: 760px;">
+            <figure class="figure">
+                <img src="assets/media/images/scaling_curve.png" alt="Policy success rate scaling with the number of generated demonstrations." loading="lazy">
+                <figcaption class="caption"><b>Scaling policy with generated data.</b> Success rate (↑) as the number of generated demonstrations grows, for Pick Volt and Place Hammer — DexSeed provides useful supervision well beyond the small-data regime.</figcaption>
+            </figure>
+        </div>
+    </div>
+</section>
+
+<!-- ================= BIBTEX ================= -->
+<section id="bibtex" class="section">
+    <div class="container">
+        <h2 class="section-title">BibTeX</h2>
+        <div class="bibtex-wrap">
+            <button class="copy-btn" id="copy-btn">Copy</button>
+            <pre class="bibtex" id="bibtex-text">@inproceedings{dexseed2026,
+  title     = {DexSeed: Scalable Physics-Grounded Demonstration Generation
+               for Sim-to-Real Dexterous Manipulation},
+  author    = {Anonymous},
+  booktitle = {Submitted to the Conference on Robot Learning (CoRL)},
+  year      = {2026},
+  note      = {Under review}
+}</pre>
+        </div>
+    </div>
+</section>
+
+<footer class="footer">
+    <div class="container">
+        DexSeed <span class="sparkle">✦</span> Anonymous project page
+    </div>
+</footer>
+
+<script type="text/javascript">
+(function () {
+    "use strict";
+
+    var MEDIA = "assets/media/videos/";
+    var NUM_SEEDS = 10;
+
+    // Single source of truth for the four tasks.
+    var TASKS = [
+        { id: "pick_volt",    name: "Pick Volt",    desc: "Pick up a handheld voltmeter and place it into a target basket.",            simStem: "pick_volt_demo6",    real: "real_4tasks/Pick_Volt/all4_4x.mp4",    human: "human_4tasks/pick_volt.mp4",    rate: 60 },
+        { id: "open_lid",     name: "Open Lid",     desc: "Slide open the lid of a box.",                                               simStem: "open_lid_demo1",     real: "real_4tasks/Open_Lid/all4_x4.mp4",     human: "human_4tasks/open_lid.mp4",     rate: 45 },
+        { id: "set_nut",      name: "Set Nut",      desc: "Pick up a nut and mount it onto a bolt.",                                    simStem: "set_nut_demo5",      real: "real_4tasks/Set_Nut/all4_x4.mp4",      human: "human_4tasks/set_nut.mp4",      rate: 40 },
+        { id: "place_hammer", name: "Place Hammer", desc: "Grasp a hammer, reorient it in hand, and insert it into a matching holder.", simStem: "place_hammer_demo1", real: "real_4tasks/Place_Hammer/all4_x4.mp4", human: "human_4tasks/place_hammer.mp4", rate: 35 }
+    ];
+
+    // ---- Visibility-driven play/pause (keeps only on-screen videos decoding) ----
+    var io = ("IntersectionObserver" in window) ? new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+            var v = e.target;
+            if (e.isIntersecting) { tryPlay(v); }
+            else { v.pause(); }
+        });
+    }, { threshold: 0.25 }) : null;
+
+    function tryPlay(v) {
+        if (!v.dataset.armed) { return; }      // only autoplay clips we've armed
+        var p = v.play();
+        if (p && p.catch) { p.catch(function () {}); }
+    }
+
+    function el(tag, cls, attrs) {
+        var n = document.createElement(tag);
+        if (cls) { n.className = cls; }
+        if (attrs) { Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); }); }
+        return n;
+    }
+
+    // ---- Human input row: four looping clips ----
+    function buildHumanRow() {
+        var row = document.getElementById("human-row");
+        if (!row) { return; }
+        TASKS.forEach(function (t) {
+            var cell = el("div", "human-cell");
+            var v = el("video", null, { playsinline: "", preload: "auto" });
+            v.muted = true;
+            v.loop = true;
+            v.dataset.armed = "1";
+            v.src = MEDIA + t.human;
+            v.load();
+            var name = el("div", "name"); name.textContent = t.name;
+            cell.appendChild(v); cell.appendChild(name); row.appendChild(cell);
+            if (io) { io.observe(v); }
+        });
+    }
+
+    // ---- Generic tabbed gallery (one reused <video>, src swapped on navigation) ----
+    // clipsFor(task) -> [{ src, label }];  opts: { loop, autoAdvance, alwaysLabel }
+    function buildGallery(mountId, clipsFor, opts) {
+        var mount = document.getElementById(mountId);
+        if (!mount) { return; }
+        opts = opts || {};
+
+        var state = { task: 0, clip: 0 };
+        var clips = clipsFor(TASKS[0]);
+
+        var tabsEl = el("div", "tabs");
+        var tabBtns = TASKS.map(function (t, i) {
+            var b = el("button", "tab" + (i === 0 ? " active" : ""));
+            b.textContent = t.name;
+            b.addEventListener("click", function () { selectTask(i); });
+            tabsEl.appendChild(b);
+            return b;
+        });
+
+        var descEl = el("p", "task-desc"); descEl.textContent = TASKS[0].desc;
+
+        var stage = el("div", "stage");
+        var video = el("video", null, { playsinline: "", preload: "metadata" });
+        video.muted = true;
+        video.dataset.armed = "1";
+        if (opts.loop) { video.loop = true; }
+        stage.appendChild(video);
+
+        var prev = el("button", "nav-arrow prev"); prev.innerHTML = "&#8249;"; prev.setAttribute("aria-label", "Previous");
+        var next = el("button", "nav-arrow next"); next.innerHTML = "&#8250;"; next.setAttribute("aria-label", "Next");
+        prev.addEventListener("click", function () { selectClip(state.clip - 1); });
+        next.addEventListener("click", function () { selectClip(state.clip + 1); });
+
+        var labelEl = el("div", "clip-label");
+        var dotsEl = el("div", "dots");
+        var dotBtns = [];
+
+        var multi = clips.length > 1;
+        if (multi) { stage.appendChild(prev); stage.appendChild(next); }
+
+        mount.appendChild(tabsEl);
+        mount.appendChild(descEl);
+        mount.appendChild(stage);
+        if (multi || opts.alwaysLabel) { mount.appendChild(labelEl); }
+        if (multi) { mount.appendChild(dotsEl); }
+
+        function rebuildDots() {
+            dotsEl.innerHTML = ""; dotBtns = [];
+            clips.forEach(function (c, i) {
+                var d = el("button", "dot" + (i === state.clip ? " active" : ""));
+                d.setAttribute("aria-label", "Clip " + (i + 1));
+                d.addEventListener("click", function () { selectClip(i); });
+                dotsEl.appendChild(d); dotBtns.push(d);
+            });
+        }
+
+        function render() {
+            var c = clips[state.clip];
+            video.src = c.src;
+            video.load();
+            tryPlay(video);
+            labelEl.innerHTML = c.label;
+            dotBtns.forEach(function (d, i) { d.classList.toggle("active", i === state.clip); });
+        }
+
+        function selectTask(i) {
+            state.task = i; state.clip = 0;
+            clips = clipsFor(TASKS[i]);
+            tabBtns.forEach(function (b, j) { b.classList.toggle("active", j === i); });
+            descEl.textContent = TASKS[i].desc;
+            if (clips.length > 1) { rebuildDots(); }
+            render();
+        }
+        function selectClip(i) {
+            state.clip = (i + clips.length) % clips.length;
+            render();
+        }
+
+        // Auto-advance through clips (used by the sim carousel).
+        if (opts.autoAdvance) {
+            video.addEventListener("ended", function () {
+                if (clips.length > 1) { selectClip(state.clip + 1); }
+            });
+        }
+
+        if (multi) { rebuildDots(); }
+        // Prime the first clip without forcing playback; the observer plays it once on screen.
+        var first = clips[0];
+        video.src = first.src;
+        labelEl.innerHTML = first.label;
+        if (io) { io.observe(video); } else { tryPlay(video); }
+    }
+
+    // Sim: 10 randomized seeds per task, auto-advancing carousel.
+    function simClips(t) {
+        var out = [];
+        for (var i = 0; i < NUM_SEEDS; i++) {
+            out.push({
+                src: MEDIA + "sim_visdr_4tasks/" + t.simStem + "_seed" + i + ".mp4",
+                label: 'Generated rollout · <span class="hl">seed ' + (i + 1) + " / " + NUM_SEEDS + "</span> · visual + physics randomization"
+            });
+        }
+        return out;
+    }
+
+    // Real: one looping composite grid per task.
+    function realClips(t) {
+        return [{
+            src: MEDIA + t.real,
+            label: '<span class="hl">' + t.rate + "% zero-shot success</span> · 20 trials · ×4 speed"
+        }];
+    }
+
+    buildHumanRow();
+    buildGallery("sim-gallery", simClips, { loop: false, autoAdvance: true });
+    buildGallery("real-gallery", realClips, { loop: true, autoAdvance: false, alwaysLabel: true });
+
+    // ---- BibTeX copy ----
+    var copyBtn = document.getElementById("copy-btn");
+    if (copyBtn) {
+        copyBtn.addEventListener("click", function () {
+            var text = document.getElementById("bibtex-text").textContent;
+            var done = function () { copyBtn.textContent = "Copied!"; setTimeout(function () { copyBtn.textContent = "Copy"; }, 1600); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+            } else { fallbackCopy(text); done(); }
+        });
+    }
+    function fallbackCopy(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+})();
+</script>
 </body>
 </html>
