@@ -311,8 +311,9 @@ img { max-width: 100%; height: auto; display: block; }
     overflow: hidden;
     background: #000;
     box-shadow: 0 6px 30px rgba(0, 0, 0, 0.10);
+    aspect-ratio: 4 / 3;            /* real composites are 4:3 — reserve height, no collapse */
 }
-.stage video { width: 100%; display: block; background: #000; }
+.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
 .nav-arrow {
     position: absolute;
     top: 50%; transform: translateY(-50%);
@@ -352,6 +353,43 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .dot:hover { background: var(--text-light); }
 .dot.active { background: var(--primary); transform: scale(1.15); }
+
+/* ---------- Coverflow carousel (sim gallery) ---------- */
+.coverflow { position: relative; }
+.cf-viewport { overflow: hidden; padding: 8px 0; }
+.cf-track {
+    display: flex;
+    align-items: center;
+    column-gap: 18px;
+    will-change: transform;
+    transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.cf-slide {
+    flex: 0 0 auto;
+    width: 64%;
+    opacity: 0.38;
+    transform: scale(0.86);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+    cursor: pointer;
+}
+.cf-slide.is-active { opacity: 1; transform: scale(1); cursor: default; }
+.cf-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;          /* sim videos are 16:9 — reserve height, no black-flash collapse */
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12);
+}
+.cf-slide.is-active .cf-frame { box-shadow: 0 12px 38px rgba(0, 0, 0, 0.22); }
+.cf-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.coverflow .nav-arrow { z-index: 3; }
+.coverflow .nav-arrow.prev { left: 8px; }
+.coverflow .nav-arrow.next { right: 8px; }
+@media (max-width: 768px) {
+    .cf-slide { width: 82%; }
+    .cf-track { column-gap: 12px; }
+}
 
 /* ---------- Human input row ---------- */
 .human-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
@@ -712,15 +750,16 @@ img { max-width: 100%; height: auto; display: block; }
         });
     }
 
-    // ---- Generic tabbed gallery (one reused <video>, src swapped on navigation) ----
-    // clipsFor(task) -> [{ src, label }];  opts: { loop, autoAdvance, alwaysLabel }
-    function buildGallery(mountId, clipsFor, opts) {
+    // ---- Coverflow carousel (sim gallery): tabs + peek carousel over N clips ----
+    // Neighbours are lazy-loaded so they show a frame (faint preview) and the
+    // active slide never collapses (fixed-aspect frame) — no black-flash on switch.
+    function buildCoverflow(mountId, clipsFor) {
         var mount = document.getElementById(mountId);
         if (!mount) { return; }
-        opts = opts || {};
 
-        var state = { task: 0, clip: 0 };
         var clips = clipsFor(TASKS[0]);
+        var active = 0;
+        var visible = false;
 
         var tabsEl = el("div", "tabs");
         var tabBtns = TASKS.map(function (t, i) {
@@ -730,79 +769,181 @@ img { max-width: 100%; height: auto; display: block; }
             tabsEl.appendChild(b);
             return b;
         });
+        var descEl = el("p", "task-desc"); descEl.textContent = TASKS[0].desc;
 
+        var cf = el("div", "coverflow");
+        var viewport = el("div", "cf-viewport");
+        var track = el("div", "cf-track");
+        viewport.appendChild(track);
+        cf.appendChild(viewport);
+
+        var prev = el("button", "nav-arrow prev"); prev.innerHTML = "&#8249;"; prev.setAttribute("aria-label", "Previous");
+        var next = el("button", "nav-arrow next"); next.innerHTML = "&#8250;"; next.setAttribute("aria-label", "Next");
+        prev.addEventListener("click", function () { go(active - 1); });
+        next.addEventListener("click", function () { go(active + 1); });
+        cf.appendChild(prev); cf.appendChild(next);
+
+        var labelEl = el("div", "clip-label");
+        var dotsEl = el("div", "dots");
+
+        mount.appendChild(tabsEl);
+        mount.appendChild(descEl);
+        mount.appendChild(cf);
+        mount.appendChild(labelEl);
+        mount.appendChild(dotsEl);
+
+        var videos = [], slides = [], dots = [];
+
+        function buildSlides() {
+            track.innerHTML = ""; dotsEl.innerHTML = "";
+            videos = []; slides = []; dots = [];
+            clips.forEach(function (c, i) {
+                var slide = el("div", "cf-slide");
+                var frame = el("div", "cf-frame");
+                var v = el("video", null, { playsinline: "", preload: "none" });
+                v.muted = true;
+                v.dataset.src = c.src;       // lazy — set on demand
+                v.addEventListener("ended", function () {
+                    if (videos.indexOf(v) === active && visible) { go(active + 1); }
+                });
+                frame.appendChild(v);
+                slide.appendChild(frame);
+                slide.addEventListener("click", function () { if (i !== active) { go(i); } });
+                track.appendChild(slide);
+                videos.push(v); slides.push(slide);
+
+                var d = el("button", "dot"); d.setAttribute("aria-label", "Seed " + (i + 1));
+                d.addEventListener("click", function () { go(i); });
+                dotsEl.appendChild(d); dots.push(d);
+            });
+        }
+
+        function ensureLoaded(i) {
+            if (i < 0 || i >= videos.length) { return; }
+            var v = videos[i];
+            if (!v.src && v.dataset.src) { v.src = v.dataset.src; v.load(); }
+        }
+
+        function layout() {
+            if (!slides.length) { return; }
+            var vpW = viewport.clientWidth;
+            var slideW = slides[0].offsetWidth;
+            if (!vpW || !slideW) { return; }
+            var gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+            var tx = (vpW - slideW) / 2 - active * (slideW + gap);
+            track.style.transform = "translateX(" + tx + "px)";
+        }
+
+        function render() {
+            slides.forEach(function (s, i) { s.classList.toggle("is-active", i === active); });
+            dots.forEach(function (d, i) { d.classList.toggle("active", i === active); });
+            labelEl.innerHTML = clips[active].label;
+            layout();
+            ensureLoaded(active); ensureLoaded(active - 1); ensureLoaded(active + 1);
+            videos.forEach(function (v, i) {
+                if (i === active) {
+                    if (visible) { v.currentTime = 0; var p = v.play(); if (p && p.catch) { p.catch(function () {}); } }
+                } else {
+                    v.pause();
+                }
+            });
+        }
+
+        function go(i) { active = (i + clips.length) % clips.length; render(); }
+
+        function selectTask(i) {
+            active = 0;
+            clips = clipsFor(TASKS[i]);
+            tabBtns.forEach(function (b, j) { b.classList.toggle("active", j === i); });
+            descEl.textContent = TASKS[i].desc;
+            buildSlides();
+            render();
+        }
+
+        if ("IntersectionObserver" in window) {
+            new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    visible = e.isIntersecting;
+                    if (visible) {
+                        ensureLoaded(active);
+                        var v = videos[active];
+                        if (v) { var p = v.play(); if (p && p.catch) { p.catch(function () {}); } }
+                    } else {
+                        videos.forEach(function (v) { v.pause(); });
+                    }
+                });
+            }, { threshold: 0.2 }).observe(cf);
+        } else {
+            visible = true;
+        }
+
+        var raf = null;
+        window.addEventListener("resize", function () {
+            if (raf) { cancelAnimationFrame(raf); }
+            raf = requestAnimationFrame(layout);
+        });
+
+        buildSlides();
+        render();
+        requestAnimationFrame(layout);   // re-measure once layout settles
+    }
+
+    // ---- Tabbed single-video gallery (real gallery): fixed-aspect stage, no collapse ----
+    function buildTabbed(mountId, clipsFor) {
+        var mount = document.getElementById(mountId);
+        if (!mount) { return; }
+
+        var clips = clipsFor(TASKS[0]);
+        var visible = false;
+
+        var tabsEl = el("div", "tabs");
+        var tabBtns = TASKS.map(function (t, i) {
+            var b = el("button", "tab" + (i === 0 ? " active" : ""));
+            b.textContent = t.name;
+            b.addEventListener("click", function () { select(i); });
+            tabsEl.appendChild(b);
+            return b;
+        });
         var descEl = el("p", "task-desc"); descEl.textContent = TASKS[0].desc;
 
         var stage = el("div", "stage");
         var video = el("video", null, { playsinline: "", preload: "metadata" });
-        video.muted = true;
-        video.dataset.armed = "1";
-        if (opts.loop) { video.loop = true; }
+        video.muted = true; video.loop = true;
         stage.appendChild(video);
 
-        var prev = el("button", "nav-arrow prev"); prev.innerHTML = "&#8249;"; prev.setAttribute("aria-label", "Previous");
-        var next = el("button", "nav-arrow next"); next.innerHTML = "&#8250;"; next.setAttribute("aria-label", "Next");
-        prev.addEventListener("click", function () { selectClip(state.clip - 1); });
-        next.addEventListener("click", function () { selectClip(state.clip + 1); });
-
         var labelEl = el("div", "clip-label");
-        var dotsEl = el("div", "dots");
-        var dotBtns = [];
-
-        var multi = clips.length > 1;
-        if (multi) { stage.appendChild(prev); stage.appendChild(next); }
 
         mount.appendChild(tabsEl);
         mount.appendChild(descEl);
         mount.appendChild(stage);
-        if (multi || opts.alwaysLabel) { mount.appendChild(labelEl); }
-        if (multi) { mount.appendChild(dotsEl); }
-
-        function rebuildDots() {
-            dotsEl.innerHTML = ""; dotBtns = [];
-            clips.forEach(function (c, i) {
-                var d = el("button", "dot" + (i === state.clip ? " active" : ""));
-                d.setAttribute("aria-label", "Clip " + (i + 1));
-                d.addEventListener("click", function () { selectClip(i); });
-                dotsEl.appendChild(d); dotBtns.push(d);
-            });
-        }
+        mount.appendChild(labelEl);
 
         function render() {
-            var c = clips[state.clip];
-            video.src = c.src;
-            video.load();
-            tryPlay(video);
+            var c = clips[0];
+            video.src = c.src; video.load();
+            if (visible) { var p = video.play(); if (p && p.catch) { p.catch(function () {}); } }
             labelEl.innerHTML = c.label;
-            dotBtns.forEach(function (d, i) { d.classList.toggle("active", i === state.clip); });
         }
-
-        function selectTask(i) {
-            state.task = i; state.clip = 0;
+        function select(i) {
             clips = clipsFor(TASKS[i]);
             tabBtns.forEach(function (b, j) { b.classList.toggle("active", j === i); });
             descEl.textContent = TASKS[i].desc;
-            if (clips.length > 1) { rebuildDots(); }
-            render();
-        }
-        function selectClip(i) {
-            state.clip = (i + clips.length) % clips.length;
             render();
         }
 
-        // Auto-advance through clips (used by the sim carousel).
-        if (opts.autoAdvance) {
-            video.addEventListener("ended", function () {
-                if (clips.length > 1) { selectClip(state.clip + 1); }
-            });
+        if ("IntersectionObserver" in window) {
+            new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    visible = e.isIntersecting;
+                    if (visible) { var p = video.play(); if (p && p.catch) { p.catch(function () {}); } }
+                    else { video.pause(); }
+                });
+            }, { threshold: 0.2 }).observe(stage);
+        } else {
+            visible = true;
         }
 
-        if (multi) { rebuildDots(); }
-        // Prime the first clip without forcing playback; the observer plays it once on screen.
-        var first = clips[0];
-        video.src = first.src;
-        labelEl.innerHTML = first.label;
-        if (io) { io.observe(video); } else { tryPlay(video); }
+        render();
     }
 
     // Sim: 10 randomized seeds per task, auto-advancing carousel.
@@ -826,8 +967,8 @@ img { max-width: 100%; height: auto; display: block; }
     }
 
     buildHumanRow();
-    buildGallery("sim-gallery", simClips, { loop: false, autoAdvance: true });
-    buildGallery("real-gallery", realClips, { loop: true, autoAdvance: false, alwaysLabel: true });
+    buildCoverflow("sim-gallery", simClips);
+    buildTabbed("real-gallery", realClips);
 
     // ---- BibTeX copy ----
     var copyBtn = document.getElementById("copy-btn");
